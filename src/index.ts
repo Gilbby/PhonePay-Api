@@ -11,7 +11,7 @@ import transactionRoutes from './routes/transactions';
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = parseInt(process.env.PORT || '3000', 10);
 
 // Connect to MongoDB
 connectDB();
@@ -52,8 +52,8 @@ app.use('*', (_, res) => {
   res.status(404).json({ success: false, message: 'Route not found' });
 });
 
-app.listen(PORT, () => {
-  console.log(`🚀 PhonePay API running on port ${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`PhonePay API running on port ${PORT}`);
 });
 
 export default app;
