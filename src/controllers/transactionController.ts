@@ -26,8 +26,11 @@ export const getTransactions = async (req: AuthRequest, res: Response): Promise<
     const { type, limit = 20, page = 1 } = req.query;
 
     const filter: Record<string, unknown> = {
-      $or: [{ senderId: userId }, { receiverId: userId }],
-    };
+        $or: [
+          { senderId: userId, type: { $in: ['sent', 'cash_out'] } },
+          { receiverId: userId, type: 'received' },
+        ],
+      };
 
     if (type && type !== 'all') {
       filter.type = type;
