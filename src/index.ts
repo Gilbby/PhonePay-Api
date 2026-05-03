@@ -43,6 +43,7 @@ app.use('/api/auth', authLimiter);
 app.use('/api/auth', authRoutes);
 app.use('/api/wallets', walletRoutes);
 app.use('/api/transactions', transactionRoutes);
+app.use('/api/users', userRoutes);  // ← move it here
 
 // Health check
 app.get('/health', (_, res) => {
@@ -57,7 +58,5 @@ app.use('*', (_, res) => {
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`PhonePay API running on port ${PORT}`);
 });
-
-app.use('/api/users', userRoutes);
 
 export default app;
