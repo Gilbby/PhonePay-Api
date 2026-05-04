@@ -39,3 +39,35 @@ export const searchUsers = async (req: AuthRequest, res: Response): Promise<void
     res.status(500).json({ success: false, message: 'Server error' });
   }
 };
+
+export const searchAgents = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { q } = req.query;
+
+    // If no query, return all agents
+    const filter: any = { isAgent: true };
+
+    if (q && String(q).length > 0) {
+      filter.$or = [
+        { agentCode: { $regex: String(q), $options: 'i' } },
+        { alias: { $regex: String(q), $options: 'i' } },
+      ];
+    }
+
+    const agents = await User.find(filter)
+      .select('_id alias phone agentCode')
+      .limit(10);
+
+    res.json({
+      success: true,
+      agents: agents.map((a) => ({
+        id: a._id,
+        code: a.agentCode,
+        name: a.alias?.replace('@', '') ?? a.phone,
+        location: 'Zambia',
+      })),
+    });
+  } catch {
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
