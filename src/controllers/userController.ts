@@ -71,3 +71,40 @@ export const searchAgents = async (req: AuthRequest, res: Response): Promise<voi
     res.status(500).json({ success: false, message: 'Server error' });
   }
 };
+
+export const toggleAgentMode = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { isAgent } = req.body;
+    const userId = req.user!._id;
+
+    const updateData: any = { isAgent };
+
+    // If enabling agent mode, generate an agent code if they don't have one
+    if (isAgent) {
+      const user = await User.findById(userId);
+      if (!user?.agentCode) {
+        updateData.agentCode = `AG${Date.now().toString().slice(-6)}`;
+      }
+    }
+
+    const user = await User.findByIdAndUpdate(
+      userId,
+      updateData,
+      { new: true }
+    );
+
+    res.json({
+      success: true,
+      user: {
+        id: user?._id,
+        phone: user?.phone,
+        alias: user?.alias,
+        isAgent: user?.isAgent,
+        agentCode: user?.agentCode,
+        agentEarnings: user?.agentEarnings,
+      },
+    });
+  } catch {
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
