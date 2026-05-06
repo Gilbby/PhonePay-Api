@@ -8,6 +8,8 @@ import authRoutes from './routes/auth';
 import walletRoutes from './routes/wallets';
 import transactionRoutes from './routes/transactions';
 import userRoutes from './routes/users';
+import webhookRoutes from './routes/webhooks';
+
 
 
 dotenv.config();
@@ -58,5 +60,8 @@ app.use('*', (_, res) => {
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`PhonePay API running on port ${PORT}`);
 });
+
+
+app.use('/api/webhooks', webhookRoutes);
 
 export default app;
