@@ -1,15 +1,15 @@
 import { Response } from 'express';
 import Transaction from '../models/Transaction';
 import User from '../models/User';
+import Wallet from '../models/Wallet';
 import { AuthRequest } from '../middleware/auth';
 import crypto from 'crypto';
+import { initiateDeposit, initiatePayout, getProvider } from '../services/pawapayService';
 
-// Generate unique transaction reference
 const generateReference = (): string => {
   return `TXN${Date.now()}${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
 };
 
-// Calculate fee — matches frontend calculateFee util
 const calculateFee = (amount: number): number => {
   if (amount <= 100) return 2;
   if (amount <= 500) return 5;
@@ -17,20 +17,17 @@ const calculateFee = (amount: number): number => {
   return 15;
 };
 
-// @route   GET /api/transactions
-// @desc    Get transaction history for current user
-// @access  Private
 export const getTransactions = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const userId = req.user!._id;
     const { type, limit = 20, page = 1 } = req.query;
 
     const filter: Record<string, unknown> = {
-        $or: [
-          { senderId: userId, type: { $in: ['sent', 'cash_out'] } },
-          { receiverId: userId, type: 'received' },
-        ],
-      };
+      $or: [
+        { senderId: userId, type: { $in: ['sent', 'cash_out'] } },
+        { receiverId: userId, type: 'received' },
+      ],
+    };
 
     if (type && type !== 'all') {
       filter.type = type;
@@ -59,9 +56,6 @@ export const getTransactions = async (req: AuthRequest, res: Response): Promise<
   }
 };
 
-// @route   POST /api/transactions/send
-// @desc    Initiate a send money transaction
-// @access  Private
 export const sendMoney = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { recipientAlias, recipientPhone, amount, senderWalletId } = req.body;
@@ -72,7 +66,7 @@ export const sendMoney = async (req: AuthRequest, res: Response): Promise<void> 
       return;
     }
 
-    // Find recipient by alias or phone
+    // Find recipient
     const recipient = await User.findOne(
       recipientAlias ? { alias: recipientAlias } : { phone: recipientPhone }
     );
@@ -87,11 +81,25 @@ export const sendMoney = async (req: AuthRequest, res: Response): Promise<void> 
       return;
     }
 
+    // Get sender's wallet to find their phone number for pawaPay
+    const senderWallet = await Wallet.findById(senderWalletId);
+    if (!senderWallet) {
+      res.status(400).json({ success: false, message: 'Sender wallet not found' });
+      return;
+    }
+
+    // Validate sender phone is supported by pawaPay
+    try {
+      getProvider(senderWallet.phone);
+    } catch {
+      res.status(400).json({ success: false, message: 'Wallet provider not supported' });
+      return;
+    }
+
     const fee = calculateFee(amount);
     const reference = generateReference();
 
-    // Create transaction as pending
-    // NOTE: pawaPay deposit + payout will be triggered here in Phase 3
+    // Save transaction as pending BEFORE calling pawaPay
     const transaction = await Transaction.create({
       type: 'sent',
       amount,
@@ -103,22 +111,60 @@ export const sendMoney = async (req: AuthRequest, res: Response): Promise<void> 
       reference,
     });
 
-    // TODO Phase 3: Trigger pawaPay deposit here
-    // On webhook confirmation: update status to 'success' and trigger payout
+    // Step 1 — Deposit from sender's mobile wallet into PhonePay pawaPay account
+    const { depositId, data: depositData } = await initiateDeposit(
+      senderWallet.phone,
+      amount + fee
+    );
 
-    // For now simulate success
-    transaction.status = 'success';
+    if (depositData.status !== 'ACCEPTED') {
+      transaction.status = 'failed';
+      await transaction.save();
+      res.status(402).json({
+        success: false,
+        message: depositData.failureReason?.failureMessage || 'Deposit initiation failed',
+      });
+      return;
+    }
+
+    // Step 2 — Payout to recipient's primary wallet
+    const recipientWallet = await Wallet.findOne({ userId: recipient._id, isPrimary: true });
+    if (!recipientWallet) {
+      transaction.status = 'failed';
+      await transaction.save();
+      res.status(404).json({ success: false, message: 'Recipient has no primary wallet' });
+      return;
+    }
+
+    const { payoutId, data: payoutData } = await initiatePayout(
+      recipientWallet.phone,
+      amount
+    );
+
+    if (payoutData.status !== 'ACCEPTED') {
+      transaction.status = 'failed';
+      await transaction.save();
+      res.status(402).json({
+        success: false,
+        message: payoutData.failureReason?.failureMessage || 'Payout initiation failed',
+      });
+      return;
+    }
+
+    // Both accepted — store pawaPay references and leave as pending
+    // Webhook will update to 'success' or 'failed' on confirmation
+    transaction.reference = depositId; // so webhook can find it
     await transaction.save();
 
-    // Create corresponding received transaction for recipient
+    // Create received transaction for recipient (also pending until webhook confirms)
     await Transaction.create({
       type: 'received',
       amount,
       fee: 0,
-      status: 'success',
+      status: 'pending',
       senderId,
       receiverId: recipient._id,
-      reference: `${reference}-R`,
+      reference: payoutId,
     });
 
     res.status(201).json({
@@ -130,15 +176,14 @@ export const sendMoney = async (req: AuthRequest, res: Response): Promise<void> 
       },
       fee,
       total: amount + fee,
+      message: 'Payment initiated — awaiting confirmation',
     });
-  } catch {
+  } catch (err) {
+    console.error('sendMoney error:', err);
     res.status(500).json({ success: false, message: 'Server error' });
   }
 };
 
-// @route   POST /api/transactions/cash-out
-// @desc    Initiate a Get Cash (cash out via agent) transaction
-// @access  Private
 export const getCash = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { agentCode, amount, walletId } = req.body;
@@ -149,7 +194,6 @@ export const getCash = async (req: AuthRequest, res: Response): Promise<void> =>
       return;
     }
 
-    // Find agent by code
     const agent = await User.findOne({ agentCode, isAgent: true });
     if (!agent) {
       res.status(404).json({ success: false, message: 'Agent not found' });
@@ -170,9 +214,10 @@ export const getCash = async (req: AuthRequest, res: Response): Promise<void> =>
       reference,
     });
 
-    // TODO Phase 3: Trigger pawaPay deposit + payout to agent here
+    // TODO Phase 4: Wire pawaPay deposit + payout to agent here
+    // Same pattern as sendMoney above
 
-    // Simulate success
+    // Simulate success for now
     transaction.status = 'success';
     await transaction.save();
 

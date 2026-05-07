@@ -1,8 +1,9 @@
+import dotenv from 'dotenv';
+dotenv.config();
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
-import dotenv from 'dotenv';
 import connectDB from './config/db';
 import authRoutes from './routes/auth';
 import walletRoutes from './routes/wallets';
@@ -10,30 +11,23 @@ import transactionRoutes from './routes/transactions';
 import userRoutes from './routes/users';
 import webhookRoutes from './routes/webhooks';
 
-
-
-dotenv.config();
-
 const app = express();
+app.set('trust proxy', 1);
 const PORT = parseInt(process.env.PORT || '3000', 10);
 
-// Connect to MongoDB
 connectDB();
 
-// Security middleware
 app.use(helmet());
 app.use(cors());
 app.use(express.json());
 
-// Rate limiting
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
+  windowMs: 15 * 60 * 1000,
   max: 100,
   message: { success: false, message: 'Too many requests, please try again later' },
 });
 app.use('/api', limiter);
 
-// Stricter limit for auth routes
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
@@ -45,7 +39,8 @@ app.use('/api/auth', authLimiter);
 app.use('/api/auth', authRoutes);
 app.use('/api/wallets', walletRoutes);
 app.use('/api/transactions', transactionRoutes);
-app.use('/api/users', userRoutes);  // ← move it here
+app.use('/api/users', userRoutes);
+app.use('/api/webhooks', webhookRoutes); // ← moved before 404 and listen
 
 // Health check
 app.get('/health', (_, res) => {
@@ -60,8 +55,5 @@ app.use('*', (_, res) => {
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`PhonePay API running on port ${PORT}`);
 });
-
-
-app.use('/api/webhooks', webhookRoutes);
 
 export default app;
