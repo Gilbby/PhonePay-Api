@@ -8,9 +8,8 @@ const headers = {
   'Content-Type': 'application/json',
 };
 
-// Zambia provider codes — corrected from pawaPay docs
+// Zambia provider codes
 export const getProvider = (phone: string): string => {
-  // Normalize — strip +260, 260, or leading 0
   const normalized = phone
     .replace(/^\+260/, '')
     .replace(/^260/, '')
@@ -18,7 +17,7 @@ export const getProvider = (phone: string): string => {
 
   const prefix = normalized.substring(0, 2);
   if (['96', '76'].includes(prefix)) return 'MTN_MOMO_ZMB';
-  if (['97', '77'].includes(prefix)) return 'AIRTEL_OAPI_ZMB'; // ✅ fixed
+  if (['97', '77'].includes(prefix)) return 'AIRTEL_OAPI_ZMB';
   if (['95', '75'].includes(prefix)) return 'ZAMTEL_ZMB';
   throw new Error('Unknown provider for phone: ' + phone);
 };
@@ -44,7 +43,7 @@ export const initiateDeposit = async (
     headers,
     body: JSON.stringify({
       depositId,
-      amount: String(Math.round(amount)), // Zambia providers don't support decimals
+      amount: String(Math.round(amount)),
       currency: 'ZMW',
       payer: {
         type: 'MMO',
@@ -82,4 +81,25 @@ export const initiatePayout = async (
 
   const data = await res.json() as any;
   return { payoutId, data };
+};
+
+// Initiate a refund (return funds to sender if payout fails)
+export const initiateRefund = async (
+  depositId: string,
+  amount: number
+): Promise<{ refundId: string; data: any }> => {
+  const refundId = uuidv4();
+
+  const res = await fetch(`${BASE_URL}/v2/refunds`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      refundId,
+      depositId,
+      amount: String(Math.round(amount)),
+    }),
+  });
+
+  const data = await res.json() as any;
+  return { refundId, data };
 };

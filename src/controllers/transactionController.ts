@@ -66,7 +66,6 @@ export const sendMoney = async (req: AuthRequest, res: Response): Promise<void> 
       return;
     }
 
-    // Find recipient
     const recipient = await User.findOne(
       recipientAlias ? { alias: recipientAlias } : { phone: recipientPhone }
     );
@@ -81,14 +80,12 @@ export const sendMoney = async (req: AuthRequest, res: Response): Promise<void> 
       return;
     }
 
-    // Get sender's wallet to find their phone number for pawaPay
     const senderWallet = await Wallet.findById(senderWalletId);
     if (!senderWallet) {
       res.status(400).json({ success: false, message: 'Sender wallet not found' });
       return;
     }
 
-    // Validate sender phone is supported by pawaPay
     try {
       getProvider(senderWallet.phone);
     } catch {
@@ -99,7 +96,6 @@ export const sendMoney = async (req: AuthRequest, res: Response): Promise<void> 
     const fee = calculateFee(amount);
     const reference = generateReference();
 
-    // Save transaction as pending BEFORE calling pawaPay
     const transaction = await Transaction.create({
       type: 'sent',
       amount,
@@ -111,7 +107,6 @@ export const sendMoney = async (req: AuthRequest, res: Response): Promise<void> 
       reference,
     });
 
-    // Step 1 — Deposit from sender's mobile wallet into PhonePay pawaPay account
     const { depositId, data: depositData } = await initiateDeposit(
       senderWallet.phone,
       amount + fee
@@ -127,7 +122,6 @@ export const sendMoney = async (req: AuthRequest, res: Response): Promise<void> 
       return;
     }
 
-    // Step 2 — Payout to recipient's primary wallet
     const recipientWallet = await Wallet.findOne({ userId: recipient._id, isPrimary: true });
     if (!recipientWallet) {
       transaction.status = 'failed';
@@ -151,12 +145,9 @@ export const sendMoney = async (req: AuthRequest, res: Response): Promise<void> 
       return;
     }
 
-    // Both accepted — store pawaPay references and leave as pending
-    // Webhook will update to 'success' or 'failed' on confirmation
-    transaction.reference = depositId; // so webhook can find it
+    transaction.reference = depositId;
     await transaction.save();
 
-    // Create received transaction for recipient (also pending until webhook confirms)
     await Transaction.create({
       type: 'received',
       amount,
@@ -200,6 +191,28 @@ export const getCash = async (req: AuthRequest, res: Response): Promise<void> =>
       return;
     }
 
+    // Get sender's wallet for their phone number
+    const senderWallet = await Wallet.findById(walletId);
+    if (!senderWallet) {
+      res.status(400).json({ success: false, message: 'Sender wallet not found' });
+      return;
+    }
+
+    // Validate sender phone is supported
+    try {
+      getProvider(senderWallet.phone);
+    } catch {
+      res.status(400).json({ success: false, message: 'Wallet provider not supported' });
+      return;
+    }
+
+    // Get agent's primary wallet for payout
+    const agentWallet = await Wallet.findOne({ userId: agent._id, isPrimary: true });
+    if (!agentWallet) {
+      res.status(404).json({ success: false, message: 'Agent has no primary wallet' });
+      return;
+    }
+
     const fee = calculateFee(amount);
     const reference = generateReference();
 
@@ -214,11 +227,40 @@ export const getCash = async (req: AuthRequest, res: Response): Promise<void> =>
       reference,
     });
 
-    // TODO Phase 4: Wire pawaPay deposit + payout to agent here
-    // Same pattern as sendMoney above
+    // Step 1 — Deposit from sender's mobile wallet into PhonePay
+    const { depositId, data: depositData } = await initiateDeposit(
+      senderWallet.phone,
+      amount + fee
+    );
 
-    // Simulate success for now
-    transaction.status = 'success';
+    if (depositData.status !== 'ACCEPTED') {
+      transaction.status = 'failed';
+      await transaction.save();
+      res.status(402).json({
+        success: false,
+        message: depositData.failureReason?.failureMessage || 'Deposit initiation failed',
+      });
+      return;
+    }
+
+    // Step 2 — Payout to agent's primary wallet
+    const { payoutId, data: payoutData } = await initiatePayout(
+      agentWallet.phone,
+      amount
+    );
+
+    if (payoutData.status !== 'ACCEPTED') {
+      transaction.status = 'failed';
+      await transaction.save();
+      res.status(402).json({
+        success: false,
+        message: payoutData.failureReason?.failureMessage || 'Payout to agent failed',
+      });
+      return;
+    }
+
+    // Both accepted — update reference to depositId for webhook tracking
+    transaction.reference = depositId;
     await transaction.save();
 
     res.status(201).json({
@@ -227,8 +269,11 @@ export const getCash = async (req: AuthRequest, res: Response): Promise<void> =>
       agent: { name: agent.alias, code: agent.agentCode },
       fee,
       total: amount + fee,
+      payoutReference: payoutId,
+      message: 'Cash out initiated — awaiting confirmation',
     });
-  } catch {
+  } catch (err) {
+    console.error('getCash error:', err);
     res.status(500).json({ success: false, message: 'Server error' });
   }
 };
