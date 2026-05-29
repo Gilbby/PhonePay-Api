@@ -5,6 +5,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import connectDB from './config/db';
+import { startReconciliation } from './services/reconciliationService';
 import authRoutes from './routes/auth';
 import walletRoutes from './routes/wallets';
 import transactionRoutes from './routes/transactions';
@@ -16,6 +17,7 @@ app.set('trust proxy', 1);
 const PORT = parseInt(process.env.PORT || '3000', 10);
 
 connectDB();
+startReconciliation();
 
 app.use(helmet());
 app.use(cors());

@@ -15,6 +15,10 @@ export interface ITransaction extends Document {
   agentId?: mongoose.Types.ObjectId;
   reference: string;
   note?: string;
+  depositId?: string;
+  payoutId?: string;
+  depositStatus?: TransactionStatus;
+  payoutStatus?: TransactionStatus;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -71,6 +75,10 @@ const TransactionSchema = new Schema<ITransaction>(
       type: String,
       trim: true,
     },
+    depositId: { type: String },
+    payoutId: { type: String },
+    depositStatus: { type: String, enum: ['pending', 'success', 'failed'], default: 'pending' },
+    payoutStatus: { type: String, enum: ['pending', 'success', 'failed'], default: 'pending' },
   },
   { timestamps: true }
 );

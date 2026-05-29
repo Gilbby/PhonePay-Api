@@ -4,7 +4,7 @@ import User from '../models/User';
 import Wallet from '../models/Wallet';
 import { AuthRequest } from '../middleware/auth';
 import crypto from 'crypto';
-import { initiateDeposit, initiatePayout, getProvider } from '../services/pawapayService';
+import { initiateDeposit, getProvider } from '../services/pawapayService';
 
 const generateReference = (): string => {
   return `TXN${Date.now()}${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
@@ -122,41 +122,9 @@ export const sendMoney = async (req: AuthRequest, res: Response): Promise<void> 
       return;
     }
 
-    const recipientWallet = await Wallet.findOne({ userId: recipient._id, isPrimary: true });
-    if (!recipientWallet) {
-      transaction.status = 'failed';
-      await transaction.save();
-      res.status(404).json({ success: false, message: 'Recipient has no primary wallet' });
-      return;
-    }
-
-    const { payoutId, data: payoutData } = await initiatePayout(
-      recipientWallet.phone,
-      amount
-    );
-
-    if (payoutData.status !== 'ACCEPTED') {
-      transaction.status = 'failed';
-      await transaction.save();
-      res.status(402).json({
-        success: false,
-        message: payoutData.failureReason?.failureMessage || 'Payout initiation failed',
-      });
-      return;
-    }
-
-    transaction.reference = depositId;
+    transaction.depositId = depositId;
+    transaction.status = 'pending';
     await transaction.save();
-
-    await Transaction.create({
-      type: 'received',
-      amount,
-      fee: 0,
-      status: 'pending',
-      senderId,
-      receiverId: recipient._id,
-      reference: payoutId,
-    });
 
     res.status(201).json({
       success: true,
@@ -167,7 +135,7 @@ export const sendMoney = async (req: AuthRequest, res: Response): Promise<void> 
       },
       fee,
       total: amount + fee,
-      message: 'Payment initiated — awaiting confirmation',
+      message: 'Payment initiated — confirm on your phone',
     });
   } catch (err) {
     console.error('sendMoney error:', err);
@@ -206,13 +174,6 @@ export const getCash = async (req: AuthRequest, res: Response): Promise<void> =>
       return;
     }
 
-    // Get agent's primary wallet for payout
-    const agentWallet = await Wallet.findOne({ userId: agent._id, isPrimary: true });
-    if (!agentWallet) {
-      res.status(404).json({ success: false, message: 'Agent has no primary wallet' });
-      return;
-    }
-
     const fee = calculateFee(amount);
     const reference = generateReference();
 
@@ -243,24 +204,8 @@ export const getCash = async (req: AuthRequest, res: Response): Promise<void> =>
       return;
     }
 
-    // Step 2 — Payout to agent's primary wallet
-    const { payoutId, data: payoutData } = await initiatePayout(
-      agentWallet.phone,
-      amount
-    );
-
-    if (payoutData.status !== 'ACCEPTED') {
-      transaction.status = 'failed';
-      await transaction.save();
-      res.status(402).json({
-        success: false,
-        message: payoutData.failureReason?.failureMessage || 'Payout to agent failed',
-      });
-      return;
-    }
-
-    // Both accepted — update reference to depositId for webhook tracking
-    transaction.reference = depositId;
+    transaction.depositId = depositId;
+    transaction.status = 'pending';
     await transaction.save();
 
     res.status(201).json({
@@ -269,8 +214,7 @@ export const getCash = async (req: AuthRequest, res: Response): Promise<void> =>
       agent: { name: agent.alias, code: agent.agentCode },
       fee,
       total: amount + fee,
-      payoutReference: payoutId,
-      message: 'Cash out initiated — awaiting confirmation',
+      message: 'Cash out initiated — confirm on your phone',
     });
   } catch (err) {
     console.error('getCash error:', err);
