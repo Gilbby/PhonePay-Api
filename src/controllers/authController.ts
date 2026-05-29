@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import User from '../models/User';
+import { sendOtpSms } from '../services/smsService';
 
 // Generate JWT
 const generateToken = (id: string): string => {
@@ -12,20 +13,6 @@ const generateToken = (id: string): string => {
 // Generate 6-digit OTP
 const generateOTP = (): string => {
   return Math.floor(100000 + Math.random() * 900000).toString();
-};
-
-// Send OTP via Africa's Talking
-const sendOTP = async (phone: string, otp: string): Promise<void> => {
-  if (process.env.NODE_ENV === 'development') {
-    // In development, just log the OTP instead of sending SMS
-    console.log(`📱 OTP for ${phone}: ${otp}`);
-    return;
-  }
-
-  // TODO: Wire up Africa's Talking in production
-  // const AfricasTalking = require('africastalking');
-  // const at = AfricasTalking({ apiKey: process.env.AT_API_KEY, username: process.env.AT_USERNAME });
-  // await at.SMS.send({ to: [phone], message: `Your PhonePay OTP is: ${otp}. Valid for 10 minutes.`, from: process.env.AT_SENDER_ID });
 };
 
 // @route   POST /api/auth/check-phone
@@ -72,7 +59,7 @@ export const sendOtp = async (req: Request, res: Response): Promise<void> => {
       { upsert: true, new: true, setDefaultsOnInsert: true }
     );
 
-    await sendOTP(phone, otp);
+    await sendOtpSms(phone, otp);
 
     res.json({
       success: true,
