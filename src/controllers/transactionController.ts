@@ -1,4 +1,5 @@
 import { Response } from 'express';
+import mongoose from 'mongoose';
 import Transaction from '../models/Transaction';
 import User from '../models/User';
 import Wallet from '../models/Wallet';
@@ -82,6 +83,11 @@ export const sendMoney = async (req: AuthRequest, res: Response): Promise<void> 
 
     if (recipient._id.toString() === senderId.toString()) {
       res.status(400).json({ success: false, message: 'Cannot send money to yourself' });
+      return;
+    }
+
+    if (!senderWalletId || !mongoose.Types.ObjectId.isValid(senderWalletId)) {
+      res.status(400).json({ success: false, message: 'Please add a wallet before sending money.' });
       return;
     }
 
@@ -172,6 +178,11 @@ export const getCash = async (req: AuthRequest, res: Response): Promise<void> =>
     const agent = await User.findOne({ agentCode, isAgent: true });
     if (!agent) {
       res.status(404).json({ success: false, message: 'Agent not found' });
+      return;
+    }
+
+    if (!walletId || !mongoose.Types.ObjectId.isValid(walletId)) {
+      res.status(400).json({ success: false, message: 'Please add a wallet before withdrawing cash.' });
       return;
     }
 
