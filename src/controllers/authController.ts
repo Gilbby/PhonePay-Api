@@ -157,6 +157,44 @@ export const setPin = async (req: AuthRequest, res: Response): Promise<void> => 
   }
 };
 
+// @route   POST /api/auth/verify-pin
+// @desc    Verify user PIN — used by app lock screen when no local hash exists
+// @access  Private
+export const verifyPin = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { pin } = req.body;
+    const userId = (req as any).user._id;
+
+    if (!pin || !/^\d{4}$/.test(pin)) {
+      res.status(400).json({ success: false, message: 'PIN must be exactly 4 digits' });
+      return;
+    }
+
+    const user = await User.findById(userId).select('+pin');
+
+    if (!user) {
+      res.status(404).json({ success: false, message: 'User not found' });
+      return;
+    }
+
+    if (!user.pin) {
+      res.status(400).json({ success: false, message: 'No PIN set. Please set up a PIN first.' });
+      return;
+    }
+
+    const isMatch = await user.comparePin(pin);
+
+    if (!isMatch) {
+      res.status(401).json({ success: false, message: 'Incorrect PIN' });
+      return;
+    }
+
+    res.json({ success: true, message: 'PIN verified' });
+  } catch {
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
 // @route   POST /api/auth/create-alias
 // @desc    Set alias for new user
 // @access  Private
