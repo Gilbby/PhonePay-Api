@@ -58,11 +58,16 @@ export const getTransactions = async (req: AuthRequest, res: Response): Promise<
 
 export const sendMoney = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { recipientAlias, recipientPhone, amount, senderWalletId } = req.body;
+    const { recipientAlias, recipientPhone, amount, senderWalletId, pin } = req.body;
     const senderId = req.user!._id;
 
     if (!amount || amount <= 0) {
       res.status(400).json({ success: false, message: 'Valid amount is required' });
+      return;
+    }
+
+    if (!pin) {
+      res.status(400).json({ success: false, message: 'PIN is required.' });
       return;
     }
 
@@ -90,6 +95,17 @@ export const sendMoney = async (req: AuthRequest, res: Response): Promise<void> 
       getProvider(senderWallet.phone);
     } catch {
       res.status(400).json({ success: false, message: 'Wallet provider not supported' });
+      return;
+    }
+
+    const userWithPin = await User.findById(senderId).select('+pin');
+    if (!userWithPin?.pin) {
+      res.status(400).json({ success: false, message: 'Please set up a PIN before sending money.' });
+      return;
+    }
+    const pinValid = await userWithPin.comparePin(pin);
+    if (!pinValid) {
+      res.status(401).json({ success: false, message: 'Incorrect PIN.' });
       return;
     }
 
@@ -145,11 +161,11 @@ export const sendMoney = async (req: AuthRequest, res: Response): Promise<void> 
 
 export const getCash = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { agentCode, amount, walletId } = req.body;
+    const { agentCode, amount, walletId, pin } = req.body;
     const senderId = req.user!._id;
 
-    if (!agentCode || !amount || amount <= 0) {
-      res.status(400).json({ success: false, message: 'Agent code and valid amount are required' });
+    if (!agentCode || !amount || amount <= 0 || !pin) {
+      res.status(400).json({ success: false, message: 'Agent code, amount, and PIN are required.' });
       return;
     }
 
@@ -171,6 +187,17 @@ export const getCash = async (req: AuthRequest, res: Response): Promise<void> =>
       getProvider(senderWallet.phone);
     } catch {
       res.status(400).json({ success: false, message: 'Wallet provider not supported' });
+      return;
+    }
+
+    const userWithPin = await User.findById(senderId).select('+pin');
+    if (!userWithPin?.pin) {
+      res.status(400).json({ success: false, message: 'Please set up a PIN before withdrawing cash.' });
+      return;
+    }
+    const pinValid = await userWithPin.comparePin(pin);
+    if (!pinValid) {
+      res.status(401).json({ success: false, message: 'Incorrect PIN.' });
       return;
     }
 

@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import User from '../models/User';
 import { sendOtpSms } from '../services/smsService';
+import { AuthRequest } from '../middleware/auth';
 
 // Generate JWT
 const generateToken = (id: string): string => {
@@ -109,6 +110,8 @@ export const verifyOtp = async (req: Request, res: Response): Promise<void> => {
     const isNewUser = !user.alias;
     const token = generateToken(user._id.toString());
 
+    const userWithPin = await User.findById(user._id).select('+pin');
+
     res.json({
       success: true,
       isNewUser,
@@ -118,8 +121,37 @@ export const verifyOtp = async (req: Request, res: Response): Promise<void> => {
         phone: user.phone,
         alias: user.alias,
         isAgent: user.isAgent,
+        hasPin: !!userWithPin?.pin,
       },
     });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// @route   POST /api/auth/set-pin
+// @desc    Set PIN for authenticated user
+// @access  Private
+export const setPin = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { pin } = req.body;
+    const userId = (req as any).user._id;
+
+    if (!pin || !/^\d{4}$/.test(pin)) {
+      res.status(400).json({ success: false, message: 'PIN must be exactly 4 digits' });
+      return;
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      res.status(404).json({ success: false, message: 'User not found' });
+      return;
+    }
+
+    user.pin = pin;
+    await user.save();
+
+    res.json({ success: true, message: 'PIN set successfully' });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Server error' });
   }
