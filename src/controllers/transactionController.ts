@@ -226,7 +226,7 @@ export const getCash = async (req: AuthRequest, res: Response): Promise<void> =>
       reference,
     });
 
-    // Step 1 — Deposit from sender's mobile wallet into PhonePay
+    // Step 1 — Deposit from sender's mobile wallet into Snappay
     const { depositId, data: depositData } = await initiateDeposit(
       senderWallet.phone,
       amount + fee

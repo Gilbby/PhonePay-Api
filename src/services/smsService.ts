@@ -16,7 +16,7 @@ const getSmsClient = () => {
 export const sendOtpSms = async (phone: string, otp: string): Promise<void> => {
   // Always log in dev for easy testing
   if (process.env.NODE_ENV !== 'production') {
-    console.log(`OTP for ${phone}: ${otp}`);
+    console.log(`📱 OTP for ${phone}: ${otp}`);
   }
 
   // Skip actual SMS send if AT keys not configured
@@ -25,7 +25,7 @@ export const sendOtpSms = async (phone: string, otp: string): Promise<void> => {
     return;
   }
 
-  const message = `Your PhonePay code is ${otp}. Valid 10 minutes. Do not share it.`;
+  const message = `Your Snappay code is ${otp}. Valid 10 minutes. Do not share it.`;
 
   const result = await getSmsClient().send({
     to: [phone], // already in +260XXXXXXXXX format

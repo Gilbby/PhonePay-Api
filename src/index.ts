@@ -46,7 +46,7 @@ app.use('/api/webhooks', webhookRoutes); // ← moved before 404 and listen
 
 // Health check
 app.get('/health', (_, res) => {
-  res.json({ success: true, message: 'PhonePay API is running', env: process.env.NODE_ENV });
+  res.json({ success: true, message: 'Snappay API is running', env: process.env.NODE_ENV });
 });
 
 // 404 handler
@@ -55,7 +55,7 @@ app.use('*', (_, res) => {
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`PhonePay API running on port ${PORT}`);
+  console.log(`Snappay API running on port ${PORT}`);
 });
 
 export default app;

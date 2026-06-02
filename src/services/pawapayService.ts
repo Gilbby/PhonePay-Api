@@ -29,7 +29,7 @@ const toMSISDN = (phone: string): string => {
   return `260${phone.replace(/^0/, '')}`;
 };
 
-// Initiate a deposit (collect from user's mobile wallet into PhonePay)
+// Initiate a deposit (collect from user's mobile wallet into Snappay)
 export const initiateDeposit = async (
   phone: string,
   amount: number
@@ -56,7 +56,7 @@ export const initiateDeposit = async (
   return { depositId, data };
 };
 
-// Initiate a payout (send from PhonePay to recipient's mobile wallet)
+// Initiate a payout (send from Snappay to recipient's mobile wallet)
 export const initiatePayout = async (
   phone: string,
   amount: number
