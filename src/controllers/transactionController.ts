@@ -11,11 +11,31 @@ const generateReference = (): string => {
   return `TXN${Date.now()}${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
 };
 
-const calculateFee = (amount: number): number => {
-  if (amount <= 100) return 2;
-  if (amount <= 500) return 5;
-  if (amount <= 1000) return 10;
-  return 15;
+const getNetworkGroup = (phone: string): string => {
+  const prefix = phone.replace(/^\+260/, '').substring(0, 2);
+  if (['96', '76'].includes(prefix)) return 'MTN';
+  if (['97', '77'].includes(prefix)) return 'AIRTEL';
+  if (['95', '75'].includes(prefix)) return 'ZAMTEL';
+  return 'UNKNOWN';
+};
+
+const isSameNetwork = (phone1: string, phone2: string): boolean => {
+  return getNetworkGroup(phone1) === getNetworkGroup(phone2);
+};
+
+const calculateFee = (amount: number, crossNetwork: boolean): number => {
+  let fee = 0;
+  if (amount <= 100) fee = 2;
+  else if (amount <= 500) fee = 5;
+  else if (amount <= 1000) fee = 10;
+  else fee = 15;
+
+  if (crossNetwork) {
+    // apply a cross-network surcharge
+    fee += 5;
+  }
+
+  return fee;
 };
 
 export const getTransactions = async (req: AuthRequest, res: Response): Promise<void> => {
@@ -115,7 +135,13 @@ export const sendMoney = async (req: AuthRequest, res: Response): Promise<void> 
       return;
     }
 
-    const fee = calculateFee(amount);
+    if (amount > 10000) {
+      res.status(400).json({ success: false, message: 'Maximum transaction amount is K10,000.' });
+      return;
+    }
+
+    const cross = !isSameNetwork(senderWallet.phone, recipient.phone);
+    const fee = calculateFee(amount, cross);
     const reference = generateReference();
 
     const transaction = await Transaction.create({
@@ -212,7 +238,7 @@ export const getCash = async (req: AuthRequest, res: Response): Promise<void> =>
       return;
     }
 
-    const fee = calculateFee(amount);
+    const fee = calculateFee(amount, false);
     const reference = generateReference();
 
     const transaction = await Transaction.create({
