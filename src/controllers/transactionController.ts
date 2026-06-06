@@ -23,24 +23,39 @@ const isSameNetwork = (phone1: string, phone2: string): boolean => {
   return getNetworkGroup(phone1) === getNetworkGroup(phone2);
 };
 
-const calculateFee = (amount: number, crossNetwork: boolean): number => {
+const PAWAPAY_RATE = 0.01; // 1% pawaPay fee
+
+const calculateLevy = (amount: number): number => {
+  if (amount <= 150)  return 0.32;
+  if (amount <= 300)  return 0.40;
+  if (amount <= 500)  return 0.80;
+  if (amount <= 1000) return 2.00;
+  if (amount <= 3000) return 4.00;
+  if (amount <= 5000) return 7.50;
+  return 8.00;
+};
+
+const snappayProfit = (amount: number, crossNetwork: boolean): number => {
   if (crossNetwork) {
-    if (amount <= 150)  return 2.40;
-    if (amount <= 300)  return 4.90;
-    if (amount <= 500)  return 9.90;
-    if (amount <= 1000) return 19.90;
-    if (amount <= 3000) return 29.90;
-    if (amount <= 5000) return 28.90;
-    return 69.80;
+    if (amount <= 50)   return 1.90;
+    if (amount <= 100)  return 1.40;
+    if (amount <= 200)  return 2.90;
+    if (amount <= 500)  return 4.90;
+    if (amount <= 1000) return 9.90;
+    if (amount <= 3000) return 10.00;
+    if (amount <= 5000) return 10.00;
+    return 10.00;
   } else {
-    if (amount <= 150)  return 1.50;
-    if (amount <= 300)  return 1.70;
-    if (amount <= 500)  return 2.00;
-    if (amount <= 1000) return 2.10;
-    if (amount <= 3000) return 7.10;
-    if (amount <= 5000) return 8.10;
-    return 9.10;
+    return 1.00; // flat K1.00 profit on all same-network tiers
   }
+};
+
+// Total fee charged to the sender on top of the send amount
+const calculateFee = (amount: number, crossNetwork: boolean): number => {
+  const pawapay = amount * PAWAPAY_RATE;
+  const levy = calculateLevy(amount);
+  const profit = snappayProfit(amount, crossNetwork);
+  return +(pawapay + levy + profit).toFixed(2);
 };
 
 export const getTransactions = async (req: AuthRequest, res: Response): Promise<void> => {
